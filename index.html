@@ -317,20 +317,17 @@
         }
       });
 
-      // Combinar las listas estáticas con los valores únicos presentes en los datos
+      // Referenciar los selectores de región y sector sin recargarlos.  Estos selectores se
+      // precargan con listas estáticas al cargar la página para que el usuario pueda filtrar
+      // incluso antes de obtener datos.  No los volvemos a rellenar con valores del dataset,
+      // evitando que dependan de la información descargada ni que se pierdan selecciones.
       const regionSelect = document.getElementById('region_ejecucion');
       const sectorSelect = document.getElementById('sector_economico');
-      const regionsFromData = data.map(item => item.region_ejecucion || item.region).filter(v => v && v !== '');
-      const sectorsFromData = data.map(item => item.sector_economico || item.sector).filter(v => v && v !== '');
-      const allRegions = Array.from(new Set([...REGION_LIST, ...regionsFromData])).sort();
-      const allSectors = Array.from(new Set([...SECTOR_LIST, ...sectorsFromData])).sort();
-      // Usar la función global para recargar los selectores con todas las opciones
-      fillSelectWithValues(regionSelect, allRegions);
-      fillSelectWithValues(sectorSelect, allSectors);
-      // Determine column indices for region and sector
+      // Determinar los índices de las columnas de región y sector en la tabla
       const regionColumnIndex = columns.findIndex(col => col.data === 'region_ejecucion' || col.data === 'region');
       const sectorColumnIndex = columns.findIndex(col => col.data === 'sector_economico' || col.data === 'sector');
-      // Apply filter when selects change
+      // Función para aplicar filtros basados en la selección del usuario.  Usa expresiones
+      // regulares que se ajustan exactamente al valor seleccionado.
       function applyFilters() {
         const regionValue = regionSelect.value;
         const sectorValue = sectorSelect.value;
@@ -342,6 +339,7 @@
         }
         dataTable.draw();
       }
+      // Eliminar manejadores previos (en caso de recargar la tabla) y añadir los actuales
       regionSelect.removeEventListener('change', applyFilters);
       sectorSelect.removeEventListener('change', applyFilters);
       regionSelect.addEventListener('change', applyFilters);
