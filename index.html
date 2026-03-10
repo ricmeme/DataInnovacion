@@ -154,24 +154,32 @@
         'Accept': 'application/json',
         'Authorization': API_TOKEN
       };
-      try {
-        let response = await fetch(apiRequestURL, { headers });
-        if (!response.ok) {
-          // Try with CORS proxy as a fallback
-          // Encode the URL for proxy
-          const proxyURL = 'https://corsproxy.io/?' + encodeURIComponent(apiRequestURL);
-          response = await fetch(proxyURL, { headers });
+      // Candidate endpoints to try in order. Some proxies are used to work around CORS issues.
+      const candidateUrls = [
+        apiRequestURL,
+        // CORSProxy.io proxies the request and usually passes headers
+        'https://corsproxy.io/?' + encodeURIComponent(apiRequestURL),
+        // AllOrigins returns raw contents of remote URL
+        'https://api.allorigins.win/raw?url=' + encodeURIComponent(apiRequestURL)
+      ];
+      let fetched = false;
+      for (const url of candidateUrls) {
+        try {
+          const response = await fetch(url, { headers });
+          if (response.ok) {
+            const data = await response.json();
+            renderTable(data);
+            fetched = true;
+            break;
+          }
+        } catch (e) {
+          // Continue to next candidate if network error occurs
         }
-        if (!response.ok) {
-          throw new Error('Error al obtener datos: ' + response.statusText);
-        }
-        const data = await response.json();
-        renderTable(data);
-      } catch (error) {
-        alert(error.message || 'Error al obtener datos');
-      } finally {
-        loader.style.display = 'none';
       }
+      if (!fetched) {
+        alert('No se pudo obtener datos de la API. Intenta ajustar los filtros o verifica la conectividad.');
+      }
+      loader.style.display = 'none';
     }
 
     function renderTable(data) {
