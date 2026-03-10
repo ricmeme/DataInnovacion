@@ -44,6 +44,14 @@
     table.dataTable thead th, table.dataTable thead td {
       white-space: nowrap;
     }
+
+    /* Alinear el menú de longitud a la derecha del cuadro de búsqueda */
+    div.dataTables_filter {
+      float: left !important;
+    }
+    div.dataTables_length {
+      float: right !important;
+    }
   </style>
   <!-- jQuery -->
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
@@ -223,9 +231,9 @@
         params.append('filter[año_adjudicacion]', `2010,${anioHasta}`);
       }
       if (limit) params.append('limit', limit);
-      // Append region and sector filters if selected (may not be supported by API but included to reduce data)
-      if (regionFilter) params.append('filter[region_ejecucion]', regionFilter);
-      if (sectorFilter) params.append('filter[sector_economico]', sectorFilter);
+      // Nota: No agregamos filtros de región ni sector a la consulta de la API porque
+      // esos parámetros no son soportados oficialmente por el servicio y causan errores.
+      // En su lugar, estos filtros se aplican posteriormente en la tabla a nivel de cliente.
 
       // Build full URL once
       const queryString = params.toString();
@@ -304,7 +312,9 @@
         columns: columns,
         scrollX: true,
         colReorder: true,
-        dom: 'Bfrtip',
+        // Mostrar el cuadro de búsqueda y el menú de tamaño de página con el botón de selección de columnas.
+        // 'Bflrtip' ordena: Buttons (B), filter (f), length (l), processing (r), table (t), info (i), pagination (p).
+        dom: 'Bflrtip',
         buttons: [
           {
             extend: 'colvis',
@@ -312,6 +322,9 @@
             text: 'Seleccionar columnas'
           }
         ],
+        // Permitir al usuario elegir cuántos registros ver por página
+        lengthMenu: [[10, 25, 50, 100, 200], [10, 25, 50, 100, 200]],
+        pageLength: 10,
         language: {
           url: '//cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json'
         }
@@ -344,6 +357,11 @@
       sectorSelect.removeEventListener('change', applyFilters);
       regionSelect.addEventListener('change', applyFilters);
       sectorSelect.addEventListener('change', applyFilters);
+
+      // Aplicar los filtros inicialmente si el usuario había seleccionado región o sector
+      // antes de cargar los datos. Esto asegura que el filtro se active aunque el evento
+      // 'change' no se dispare nuevamente tras renderizar la tabla.
+      applyFilters();
     }
   </script>
 </body>
