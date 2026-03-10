@@ -101,6 +101,18 @@
       <!-- Valor predeterminado para limitar la carga inicial -->
       <input type="number" id="limit" name="limit" min="1" max="1000" value="100" placeholder="Ej. 100">
     </div>
+    <div>
+      <label for="region_ejecucion">Región de ejecución</label>
+      <select id="region_ejecucion" name="region_ejecucion">
+        <option value="">--Cualquiera--</option>
+      </select>
+    </div>
+    <div>
+      <label for="sector_economico">Sector económico</label>
+      <select id="sector_economico" name="sector_economico">
+        <option value="">--Cualquiera--</option>
+      </select>
+    </div>
     <div style="align-self: flex-end;">
       <button type="submit">Cargar datos</button>
     </div>
@@ -132,6 +144,8 @@
       const anioDesde = document.getElementById('anio_desde').value;
       const anioHasta = document.getElementById('anio_hasta').value;
       const limit = document.getElementById('limit').value;
+      const regionFilter = document.getElementById('region_ejecucion').value;
+      const sectorFilter = document.getElementById('sector_economico').value;
       if (codigo) params.append('filter[codigo]', codigo);
       if (rut) params.append('filter[rut_beneficiario]', rut);
       if (tipo) params.append('filter[tipo_intervencion]', tipo);
@@ -146,6 +160,9 @@
         params.append('filter[año_adjudicacion]', `2010,${anioHasta}`);
       }
       if (limit) params.append('limit', limit);
+      // Append region and sector filters if selected (may not be supported by API but included to reduce data)
+      if (regionFilter) params.append('filter[region_ejecucion]', regionFilter);
+      if (sectorFilter) params.append('filter[sector_economico]', sectorFilter);
 
       // Build full URL once
       const queryString = params.toString();
@@ -189,8 +206,27 @@
         container.innerHTML = '<p>No se encontraron resultados con los filtros aplicados.</p>';
         return;
       }
-      // Determine unique columns
-      const columns = Object.keys(data[0]).map(key => ({ title: key, data: key }));
+      // Mapping of API field keys to descriptive column titles (Spanish). Extend as needed.
+      const columnDescriptions = {
+        codigo: 'Código de proyecto',
+        rut_beneficiario: 'RUT Beneficiario',
+        razon_social_beneficiario: 'Beneficiario',
+        tipo_intervencion: 'Tipo de intervención',
+        estado_data: 'Estado de los datos',
+        sostenible: '¿Sostenible?',
+        año_adjudicacion: 'Año de adjudicación',
+        anio_adjudicacion: 'Año de adjudicación',
+        region_ejecucion: 'Región de ejecución',
+        sector_economico: 'Sector económico',
+        foco_apoyo: 'Foco de apoyo',
+        programa: 'Programa',
+        nombre_proyecto: 'Nombre del proyecto',
+        comuna_ejecucion: 'Comuna de ejecución',
+        region: 'Región',
+        sector: 'Sector'
+      };
+      // Determine columns dynamically but set titles using descriptive names when available
+      const columns = Object.keys(data[0]).map(key => ({ title: columnDescriptions[key] || key, data: key }));
       // Create table element
       const table = document.createElement('table');
       table.id = 'resultTable';
@@ -217,6 +253,47 @@
           url: '//cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json'
         }
       });
+
+      // Populate region and sector selects based on unique values from data
+      const regionSelect = document.getElementById('region_ejecucion');
+      const sectorSelect = document.getElementById('sector_economico');
+      // Compute unique region and sector values
+      const regions = Array.from(new Set(data.map(item => item.region_ejecucion || item.region).filter(v => v && v !== ''))).sort();
+      const sectors = Array.from(new Set(data.map(item => item.sector_economico || item.sector).filter(v => v && v !== ''))).sort();
+      // Helper to populate select
+      function populateSelect(selectElem, values) {
+        // Remove existing options except the first placeholder
+        while (selectElem.options.length > 1) {
+          selectElem.remove(1);
+        }
+        values.forEach(val => {
+          const opt = document.createElement('option');
+          opt.value = val;
+          opt.textContent = val;
+          selectElem.appendChild(opt);
+        });
+      }
+      populateSelect(regionSelect, regions);
+      populateSelect(sectorSelect, sectors);
+      // Determine column indices for region and sector
+      const regionColumnIndex = columns.findIndex(col => col.data === 'region_ejecucion' || col.data === 'region');
+      const sectorColumnIndex = columns.findIndex(col => col.data === 'sector_economico' || col.data === 'sector');
+      // Apply filter when selects change
+      function applyFilters() {
+        const regionValue = regionSelect.value;
+        const sectorValue = sectorSelect.value;
+        if (regionColumnIndex >= 0) {
+          dataTable.column(regionColumnIndex).search(regionValue ? '^' + regionValue + '$' : '', true, false);
+        }
+        if (sectorColumnIndex >= 0) {
+          dataTable.column(sectorColumnIndex).search(sectorValue ? '^' + sectorValue + '$' : '', true, false);
+        }
+        dataTable.draw();
+      }
+      regionSelect.removeEventListener('change', applyFilters);
+      sectorSelect.removeEventListener('change', applyFilters);
+      regionSelect.addEventListener('change', applyFilters);
+      sectorSelect.addEventListener('change', applyFilters);
     }
   </script>
 </body>
