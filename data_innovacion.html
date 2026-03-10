@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Consulta API DataInnovación</title>
+  <!-- DataTables CSS -->
+  <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
+  <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.1/css/buttons.dataTables.min.css">
+  <link rel="stylesheet" href="https://cdn.datatables.net/colreorder/1.6.2/css/colReorder.dataTables.min.css">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+    }
+    h1 {
+      margin-bottom: 20px;
+    }
+    form {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 20px;
+      background: #f5f5f5;
+      padding: 15px;
+      border-radius: 5px;
+    }
+    form div {
+      display: flex;
+      flex-direction: column;
+      min-width: 150px;
+    }
+    label {
+      font-weight: bold;
+    }
+    input, select {
+      padding: 4px;
+      font-size: 14px;
+    }
+    #loader {
+      display: none;
+      margin-bottom: 10px;
+    }
+    table.dataTable thead th, table.dataTable thead td {
+      white-space: nowrap;
+    }
+  </style>
+  <!-- jQuery -->
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <!-- DataTables JS -->
+  <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+  <script src="https://cdn.datatables.net/buttons/2.4.1/js/dataTables.buttons.min.js"></script>
+  <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.colVis.min.js"></script>
+  <script src="https://cdn.datatables.net/colreorder/1.6.2/js/dataTables.colReorder.min.js"></script>
+</head>
+<body>
+  <h1>Consulta de proyectos API DataInnovación</h1>
+  <form id="filtersForm">
+    <div>
+      <label for="codigo">Código de proyecto</label>
+      <input type="text" id="codigo" name="codigo" placeholder="Ej. 19CV-12345">
+    </div>
+    <div>
+      <label for="rut_beneficiario">RUT Beneficiario</label>
+      <input type="text" id="rut_beneficiario" name="rut_beneficiario" placeholder="Ej. 12345678K">
+    </div>
+    <div>
+      <label for="tipo_intervencion">Tipo intervención</label>
+      <select id="tipo_intervencion" name="tipo_intervencion">
+        <option value="">--Cualquiera--</option>
+        <option value="Ley">Ley</option>
+        <option value="Subsidio">Subsidio</option>
+      </select>
+    </div>
+    <div>
+      <label for="estado_data">Estado data</label>
+      <select id="estado_data" name="estado_data">
+        <option value="">--Cualquiera--</option>
+        <option value="Vigente">Vigente</option>
+        <option value="Finalizado">Finalizado</option>
+      </select>
+    </div>
+    <div>
+      <label for="sostenible">Sostenible</label>
+      <select id="sostenible" name="sostenible">
+        <option value="">--Cualquiera--</option>
+        <option value="Sí">Sí</option>
+        <option value="No">No</option>
+      </select>
+    </div>
+    <div>
+      <label for="anio_desde">Año adjudicación desde</label>
+      <input type="number" id="anio_desde" name="anio_desde" min="2010" max="2100" placeholder="Ej. 2010">
+    </div>
+    <div>
+      <label for="anio_hasta">Año adjudicación hasta</label>
+      <input type="number" id="anio_hasta" name="anio_hasta" min="2010" max="2100" placeholder="Ej. 2021">
+    </div>
+    <div>
+      <label for="limit">Límite de resultados</label>
+      <!-- Valor predeterminado para limitar la carga inicial -->
+      <input type="number" id="limit" name="limit" min="1" max="1000" value="100" placeholder="Ej. 100">
+    </div>
+    <div>
+      <label for="region_ejecucion">Región de ejecución</label>
+      <select id="region_ejecucion" name="region_ejecucion">
+        <option value="">--Cualquiera--</option>
+      </select>
+    </div>
+    <div>
+      <label for="sector_economico">Sector económico</label>
+      <select id="sector_economico" name="sector_economico">
+        <option value="">--Cualquiera--</option>
+      </select>
+    </div>
+    <div style="align-self: flex-end;">
+      <button type="submit">Cargar datos</button>
+    </div>
+  </form>
+  <div id="loader">Cargando datos...</div>
+  <div id="tableContainer"></div>
+  <script>
+    // Token público proporcionado por DataInnovación
+    const API_TOKEN = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJodHRwczpcL1wvZGF0YUlubm92YXRpb24uY2wiLCJuYW1lIjoicHVibGljIGFwaUtleSJ9.Ofu3LI0z8uCNYTbZyXd9BeY0sWIDt2NzUBwnHxTtdsA';
+    const API_URL = 'https://www.datainnovacion.cl/api/v1/proyectos';
+
+    // Listas estáticas de regiones y sectores económicos basadas en el catálogo oficial de CorfoConecta.
+    // Estas listas permiten precargar los selectores antes de obtener datos para que el usuario filtre
+    // sin necesidad de descargar todo el portafolio. Si en el futuro aparecen valores nuevos en la
+    // base de datos, se combinarán con estas listas al renderizar la tabla.
+    const REGION_LIST = [
+      'Arica y Parinacota',
+      'Tarapacá',
+      'Antofagasta',
+      'Atacama',
+      'Coquimbo',
+      'Valparaíso',
+      'Metropolitana de Santiago',
+      'Libertador General Bernardo O’Higgins',
+      'Maule',
+      'Ñuble',
+      'La Araucanía',
+      'Biobío',
+      'Los Ríos',
+      'Los Lagos',
+      'Aysén del General Carlos Ibáñez del Campo',
+      'Magallanes y la Antártica Chilena',
+      'Internacional'
+    ];
+    const SECTOR_LIST = [
+      'Agrícola',
+      'Agroindustria',
+      'Alimentos',
+      'Biotecnología y salud',
+      'Comercio y retail',
+      'Construcción',
+      'Energía',
+      'Forestal',
+      'Manufactura',
+      'Medio ambiente',
+      'Minería',
+      'Otro',
+      'Pesca y acuicultura',
+      'Tics',
+      'Transversal'
+    ];
+
+    // Función para rellenar un selector con valores estáticos. Siempre incluye la opción por defecto.
+    function fillSelectWithValues(selectElem, values) {
+      // Vaciar el selector conservando la opción predeterminada
+      selectElem.innerHTML = '';
+      const defaultOption = document.createElement('option');
+      defaultOption.value = '';
+      defaultOption.textContent = '--Cualquiera--';
+      selectElem.appendChild(defaultOption);
+      values.forEach(val => {
+        const opt = document.createElement('option');
+        opt.value = val;
+        opt.textContent = val;
+        selectElem.appendChild(opt);
+      });
+    }
+
+    // Al cargar la página, precargar los selectores de región y sector con las listas estáticas.
+    document.addEventListener('DOMContentLoaded', () => {
+      fillSelectWithValues(document.getElementById('region_ejecucion'), REGION_LIST);
+      fillSelectWithValues(document.getElementById('sector_economico'), SECTOR_LIST);
+    });
+
+    let dataTable;
+
+    document.getElementById('filtersForm').addEventListener('submit', function(event) {
+      event.preventDefault();
+      fetchData();
+    });
+
+    async function fetchData() {
+      const loader = document.getElementById('loader');
+      loader.style.display = 'block';
+      const params = new URLSearchParams();
+      // Build query parameters based on filled inputs
+      const codigo = document.getElementById('codigo').value.trim();
+      const rut = document.getElementById('rut_beneficiario').value.trim();
+      const tipo = document.getElementById('tipo_intervencion').value;
+      const estado = document.getElementById('estado_data').value;
+      const sostenible = document.getElementById('sostenible').value;
+      const anioDesde = document.getElementById('anio_desde').value;
+      const anioHasta = document.getElementById('anio_hasta').value;
+      const limit = document.getElementById('limit').value;
+      const regionFilter = document.getElementById('region_ejecucion').value;
+      const sectorFilter = document.getElementById('sector_economico').value;
+      if (codigo) params.append('filter[codigo]', codigo);
+      if (rut) params.append('filter[rut_beneficiario]', rut);
+      if (tipo) params.append('filter[tipo_intervencion]', tipo);
+      if (estado) params.append('filter[estado_data]', estado);
+      if (sostenible) params.append('filter[sostenible]', sostenible);
+      if (anioDesde && anioHasta) {
+        // Provide range as comma separated
+        params.append('filter[año_adjudicacion]', `${anioDesde},${anioHasta}`);
+      } else if (anioDesde) {
+        params.append('filter[año_adjudicacion]', anioDesde);
+      } else if (anioHasta) {
+        params.append('filter[año_adjudicacion]', `2010,${anioHasta}`);
+      }
+      if (limit) params.append('limit', limit);
+      // Append region and sector filters if selected (may not be supported by API but included to reduce data)
+      if (regionFilter) params.append('filter[region_ejecucion]', regionFilter);
+      if (sectorFilter) params.append('filter[sector_economico]', sectorFilter);
+
+      // Build full URL once
+      const queryString = params.toString();
+      const apiRequestURL = `${API_URL}?${queryString}`;
+      const headers = {
+        'Accept': 'application/json',
+        'Authorization': API_TOKEN
+      };
+      // Candidate endpoints to try in order. Some proxies are used to work around CORS issues.
+      const candidateUrls = [
+        apiRequestURL,
+        // CORSProxy.io proxies the request and usually passes headers
+        'https://corsproxy.io/?' + encodeURIComponent(apiRequestURL),
+        // AllOrigins returns raw contents of remote URL
+        'https://api.allorigins.win/raw?url=' + encodeURIComponent(apiRequestURL)
+      ];
+      let fetched = false;
+      for (const url of candidateUrls) {
+        try {
+          const response = await fetch(url, { headers });
+          if (response.ok) {
+            const data = await response.json();
+            renderTable(data);
+            fetched = true;
+            break;
+          }
+        } catch (e) {
+          // Continue to next candidate if network error occurs
+        }
+      }
+      if (!fetched) {
+        alert('No se pudo obtener datos de la API. Intenta ajustar los filtros o verifica la conectividad.');
+      }
+      loader.style.display = 'none';
+    }
+
+    function renderTable(data) {
+      const container = document.getElementById('tableContainer');
+      container.innerHTML = '';
+      if (!data || data.length === 0) {
+        container.innerHTML = '<p>No se encontraron resultados con los filtros aplicados.</p>';
+        return;
+      }
+      // Mapping of API field keys to descriptive column titles (Spanish). Extend as needed.
+      const columnDescriptions = {
+        codigo: 'Código de proyecto',
+        rut_beneficiario: 'RUT Beneficiario',
+        razon_social_beneficiario: 'Beneficiario',
+        tipo_intervencion: 'Tipo de intervención',
+        estado_data: 'Estado de los datos',
+        sostenible: '¿Sostenible?',
+        año_adjudicacion: 'Año de adjudicación',
+        anio_adjudicacion: 'Año de adjudicación',
+        region_ejecucion: 'Región de ejecución',
+        sector_economico: 'Sector económico',
+        foco_apoyo: 'Foco de apoyo',
+        programa: 'Programa',
+        nombre_proyecto: 'Nombre del proyecto',
+        comuna_ejecucion: 'Comuna de ejecución',
+        region: 'Región',
+        sector: 'Sector'
+      };
+      // Determine columns dynamically but set titles using descriptive names when available
+      const columns = Object.keys(data[0]).map(key => ({ title: columnDescriptions[key] || key, data: key }));
+      // Create table element
+      const table = document.createElement('table');
+      table.id = 'resultTable';
+      table.classList.add('display');
+      container.appendChild(table);
+      // Initialize DataTable
+      if (dataTable) {
+        dataTable.destroy();
+      }
+      dataTable = $('#resultTable').DataTable({
+        data: data,
+        columns: columns,
+        scrollX: true,
+        colReorder: true,
+        dom: 'Bfrtip',
+        buttons: [
+          {
+            extend: 'colvis',
+            columns: ':gt(0)',
+            text: 'Seleccionar columnas'
+          }
+        ],
+        language: {
+          url: '//cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json'
+        }
+      });
+
+      // Combinar las listas estáticas con los valores únicos presentes en los datos
+      const regionSelect = document.getElementById('region_ejecucion');
+      const sectorSelect = document.getElementById('sector_economico');
+      const regionsFromData = data.map(item => item.region_ejecucion || item.region).filter(v => v && v !== '');
+      const sectorsFromData = data.map(item => item.sector_economico || item.sector).filter(v => v && v !== '');
+      const allRegions = Array.from(new Set([...REGION_LIST, ...regionsFromData])).sort();
+      const allSectors = Array.from(new Set([...SECTOR_LIST, ...sectorsFromData])).sort();
+      // Usar la función global para recargar los selectores con todas las opciones
+      fillSelectWithValues(regionSelect, allRegions);
+      fillSelectWithValues(sectorSelect, allSectors);
+      // Determine column indices for region and sector
+      const regionColumnIndex = columns.findIndex(col => col.data === 'region_ejecucion' || col.data === 'region');
+      const sectorColumnIndex = columns.findIndex(col => col.data === 'sector_economico' || col.data === 'sector');
+      // Apply filter when selects change
+      function applyFilters() {
+        const regionValue = regionSelect.value;
+        const sectorValue = sectorSelect.value;
+        if (regionColumnIndex >= 0) {
+          dataTable.column(regionColumnIndex).search(regionValue ? '^' + regionValue + '$' : '', true, false);
+        }
+        if (sectorColumnIndex >= 0) {
+          dataTable.column(sectorColumnIndex).search(sectorValue ? '^' + sectorValue + '$' : '', true, false);
+        }
+        dataTable.draw();
+      }
+      regionSelect.removeEventListener('change', applyFilters);
+      sectorSelect.removeEventListener('change', applyFilters);
+      regionSelect.addEventListener('change', applyFilters);
+      sectorSelect.addEventListener('change', applyFilters);
+    }
+  </script>
+</body>
+</html>
