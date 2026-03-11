@@ -561,20 +561,32 @@
         // Limpiar actuales
         colToMoveSelect.innerHTML = '';
         newPositionSelect.innerHTML = '';
-        // Utilizar los títulos de las columnas definidos en la configuración de DataTables
-        // para que se muestren los nombres reales en lugar de "Col 0", "Col 1", etc.
-        columns.forEach((colObj, index) => {
-          const title = colObj.title || colObj.data || ('Col ' + index);
-          // Agregar a colToMoveSelect
+        /*
+         * Obtener el orden actual de las columnas utilizando el plugin colReorder.
+         * Si el plugin no está disponible (por ejemplo, si se deshabilitó), se usa
+         * el orden secuencial de DataTables.  colReorder.order() devuelve un array
+         * donde el índice de cada elemento corresponde a la posición visible y el
+         * valor del elemento corresponde al índice original de la columna.
+         */
+        let order = [];
+        if (dataTable.colReorder && typeof dataTable.colReorder.order === 'function') {
+          order = dataTable.colReorder.order();
+        } else {
+          order = dataTable.columns().indexes().toArray();
+        }
+        // Para cada posición visible, mostrar el título de la columna que ocupa ese lugar
+        order.forEach((origIndex, displayIndex) => {
+          const colObj = columns[origIndex];
+          const title = colObj.title || colObj.data || ('Col ' + origIndex);
+          // Option para seleccionar columna a mover
           const optMove = document.createElement('option');
-          optMove.value = index;
+          optMove.value = displayIndex;
           optMove.textContent = title;
           colToMoveSelect.appendChild(optMove);
-          // Agregar a newPositionSelect
+          // Option para seleccionar la nueva posición (1-indexada para claridad)
           const optPos = document.createElement('option');
-          optPos.value = index;
-          // Mostrar posición de forma 1-indexada para mayor claridad
-          optPos.textContent = (index + 1).toString();
+          optPos.value = displayIndex;
+          optPos.textContent = (displayIndex + 1).toString();
           newPositionSelect.appendChild(optPos);
         });
       }
@@ -603,6 +615,13 @@
         if (isNaN(fromIndex)) return;
         const lastIndex = dataTable.columns().count() - 1;
         dataTable.colReorder.move(fromIndex, lastIndex);
+        refreshReorderOptions();
+      });
+
+      // Actualizar opciones de reordenamiento cuando las columnas se mueven manualmente
+      // a través del plugin colReorder (arrastrando encabezados).  El evento
+      // 'column-reorder.dt' se dispara cada vez que el orden cambia.
+      $('#resultTable').on('column-reorder.dt', function() {
         refreshReorderOptions();
       });
     }
