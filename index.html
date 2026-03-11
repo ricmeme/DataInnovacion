@@ -57,6 +57,12 @@
       overflow-x: auto !important;
     }
 
+    /* Estilo para el área sensible del plugin de redimensionamiento de columnas.
+       Cambia el cursor a col-resize cuando se aproxima al borde de una columna. */
+    .dt-colresizable-hover {
+      cursor: col-resize !important;
+    }
+
     /* Estilo de controles DataTables: coloca los botones y el menú de longitud a la izquierda
        y el cuadro de búsqueda a la derecha. Esto mantiene juntos los controles de
        columna/longitud y separa el buscador. */
@@ -338,6 +344,21 @@
         <button type="button" id="deleteDesign">Eliminar diseño</button>
       `;
       container.appendChild(designControls);
+      // Controles para reordenar columnas rápidamente.  Permiten seleccionar
+      // una columna existente y moverla al inicio, al final o a una posición
+      // específica de forma rápida sin necesidad de arrastrar manualmente.
+      const reorderControls = document.createElement('div');
+      reorderControls.id = 'reorderControls';
+      reorderControls.innerHTML = `
+        <label for="colToMove">Mover columna:</label>
+        <select id="colToMove"></select>
+        <label for="newPosition">a la posición:</label>
+        <select id="newPosition"></select>
+        <button type="button" id="moveColumnBtn">Mover</button>
+        <button type="button" id="moveColumnStartBtn">Al inicio</button>
+        <button type="button" id="moveColumnEndBtn">Al final</button>
+      `;
+      container.appendChild(reorderControls);
       container.appendChild(table);
       // Initialize DataTable
       if (dataTable) {
@@ -523,6 +544,62 @@
 
       // Inicializar opciones al renderizar la tabla
       updateDesignOptions();
+
+      // ========== Controles de reordenamiento de columnas ==========
+      // Referencias a los selectores y botones para reordenar columnas
+      const colToMoveSelect = document.getElementById('colToMove');
+      const newPositionSelect = document.getElementById('newPosition');
+      const moveColumnBtn = document.getElementById('moveColumnBtn');
+      const moveColumnStartBtn = document.getElementById('moveColumnStartBtn');
+      const moveColumnEndBtn = document.getElementById('moveColumnEndBtn');
+
+      // Rellenar los selectores de columna y posición con las columnas actuales
+      function refreshReorderOptions() {
+        // Limpiar actuales
+        colToMoveSelect.innerHTML = '';
+        newPositionSelect.innerHTML = '';
+        const headers = dataTable.columns().header().toArray();
+        headers.forEach((th, index) => {
+          const title = $(th).text() || 'Col ' + index;
+          // Agregar a colToMoveSelect
+          const optMove = document.createElement('option');
+          optMove.value = index;
+          optMove.textContent = title;
+          colToMoveSelect.appendChild(optMove);
+          // Agregar a newPositionSelect
+          const optPos = document.createElement('option');
+          optPos.value = index;
+          optPos.textContent = index + 1; // Mostrar posición 1-indexada
+          newPositionSelect.appendChild(optPos);
+        });
+      }
+      // Actualizar opciones inicialmente
+      refreshReorderOptions();
+
+      // Mover columna a posición específica
+      moveColumnBtn.addEventListener('click', () => {
+        const fromIndex = parseInt(colToMoveSelect.value, 10);
+        const toIndex = parseInt(newPositionSelect.value, 10);
+        if (isNaN(fromIndex) || isNaN(toIndex)) return;
+        dataTable.colReorder.move(fromIndex, toIndex);
+        // Actualizar selectores con nueva configuración
+        refreshReorderOptions();
+      });
+      // Mover columna al inicio
+      moveColumnStartBtn.addEventListener('click', () => {
+        const fromIndex = parseInt(colToMoveSelect.value, 10);
+        if (isNaN(fromIndex)) return;
+        dataTable.colReorder.move(fromIndex, 0);
+        refreshReorderOptions();
+      });
+      // Mover columna al final
+      moveColumnEndBtn.addEventListener('click', () => {
+        const fromIndex = parseInt(colToMoveSelect.value, 10);
+        if (isNaN(fromIndex)) return;
+        const lastIndex = dataTable.columns().count() - 1;
+        dataTable.colReorder.move(fromIndex, lastIndex);
+        refreshReorderOptions();
+      });
     }
   </script>
 </body>
