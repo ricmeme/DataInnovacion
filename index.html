@@ -8,6 +8,8 @@
   <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
   <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.1/css/buttons.dataTables.min.css">
   <link rel="stylesheet" href="https://cdn.datatables.net/colreorder/1.6.2/css/colReorder.dataTables.min.css">
+    <!-- ColResize plugin CSS to allow column resizing -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/datatables.net-colresize-unofficial@1.6.1/jquery.dataTables.colResize.css">
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -45,12 +47,30 @@
       white-space: nowrap;
     }
 
-    /* Alinear el menú de longitud a la derecha del cuadro de búsqueda */
-    div.dataTables_filter {
-      float: left !important;
+    /* Estilo de controles DataTables: coloca los botones y el menú de longitud a la izquierda
+       y el cuadro de búsqueda a la derecha. Esto mantiene juntos los controles de
+       columna/longitud y separa el buscador. */
+    .dataTables_wrapper .dt-buttons {
+      float: left;
+      margin-right: 10px;
     }
-    div.dataTables_length {
-      float: right !important;
+    .dataTables_wrapper .dataTables_length {
+      float: left;
+      margin-right: 10px;
+    }
+    .dataTables_wrapper .dataTables_filter {
+      float: right;
+      text-align: right;
+    }
+
+    /* Controles para guardar/cargar diseños */
+    #designControls {
+      margin-bottom: 10px;
+    }
+    #designControls input,
+    #designControls select,
+    #designControls button {
+      margin-right: 5px;
     }
   </style>
   <!-- jQuery -->
@@ -59,7 +79,13 @@
   <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
   <script src="https://cdn.datatables.net/buttons/2.4.1/js/dataTables.buttons.min.js"></script>
   <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.colVis.min.js"></script>
+  <!-- DataTables Buttons HTML5 export (Excel) -->
+  <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.html5.min.js"></script>
+  <!-- JSZip for Excel export -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js"></script>
   <script src="https://cdn.datatables.net/colreorder/1.6.2/js/dataTables.colReorder.min.js"></script>
+  <!-- ColResize plugin JS to enable column resizing -->
+  <script src="https://cdn.jsdelivr.net/npm/datatables.net-colresize-unofficial@1.6.1/jquery.dataTables.colResize.js"></script>
 </head>
 <body>
   <h1>Consulta de proyectos API DataInnovación</h1>
@@ -103,11 +129,6 @@
     <div>
       <label for="anio_hasta">Año adjudicación hasta</label>
       <input type="number" id="anio_hasta" name="anio_hasta" min="2010" max="2100" placeholder="Ej. 2021">
-    </div>
-    <div>
-      <label for="limit">Límite de resultados</label>
-      <!-- Valor predeterminado para limitar la carga inicial -->
-      <input type="number" id="limit" name="limit" min="1" max="1000" value="100" placeholder="Ej. 100">
     </div>
     <div>
       <label for="region_ejecucion">Región de ejecución</label>
@@ -214,7 +235,8 @@
       const sostenible = document.getElementById('sostenible').value;
       const anioDesde = document.getElementById('anio_desde').value;
       const anioHasta = document.getElementById('anio_hasta').value;
-      const limit = document.getElementById('limit').value;
+      // Establecer un límite por defecto alto para obtener la mayoría de los registros.
+      const DEFAULT_LIMIT = 10000;
       const regionFilter = document.getElementById('region_ejecucion').value;
       const sectorFilter = document.getElementById('sector_economico').value;
       if (codigo) params.append('filter[codigo]', codigo);
@@ -230,7 +252,9 @@
       } else if (anioHasta) {
         params.append('filter[año_adjudicacion]', `2010,${anioHasta}`);
       }
-      if (limit) params.append('limit', limit);
+      // Siempre incluir un límite alto; la API lo acepta como parámetro opcional y evita
+      // retornar un número excesivo de registros sin necesidad. Ajuste según necesidad.
+      params.append('limit', DEFAULT_LIMIT);
       // Nota: No agregamos filtros de región ni sector a la consulta de la API porque
       // esos parámetros no son soportados oficialmente por el servicio y causan errores.
       // En su lugar, estos filtros se aplican posteriormente en la tabla a nivel de cliente.
@@ -302,6 +326,17 @@
       const table = document.createElement('table');
       table.id = 'resultTable';
       table.classList.add('display');
+      // Crear y agregar controles para guardar/cargar diseños antes de la tabla
+      const designControls = document.createElement('div');
+      designControls.id = 'designControls';
+      designControls.innerHTML = `
+        <input type="text" id="designName" placeholder="Nombre del diseño" />
+        <button type="button" id="saveDesign">Guardar diseño</button>
+        <label for="loadDesign">Cargar diseño:</label>
+        <select id="loadDesign"></select>
+        <button type="button" id="deleteDesign">Eliminar diseño</button>
+      `;
+      container.appendChild(designControls);
       container.appendChild(table);
       // Initialize DataTable
       if (dataTable) {
@@ -312,17 +347,27 @@
         columns: columns,
         scrollX: true,
         colReorder: true,
-        // Mostrar el cuadro de búsqueda y el menú de tamaño de página con el botón de selección de columnas.
-        // 'Bflrtip' ordena: Buttons (B), filter (f), length (l), processing (r), table (t), info (i), pagination (p).
-        dom: 'Bflrtip',
+        // Activar la opción de redimensionar columnas mediante el plugin colResize
+        colResize: true,
+        // Organizar los controles: Botones (B), menú de longitud (l), filtro de búsqueda (f),
+        // resto de componentes (r, t, i, p). Esto sitúa el menú de longitud junto al botón de columnas.
+        dom: 'Blfrtip',
         buttons: [
           {
             extend: 'colvis',
             columns: ':gt(0)',
             text: 'Seleccionar columnas'
+          },
+          {
+            extend: 'excelHtml5',
+            text: 'Exportar a Excel',
+            title: 'Proyectos DataInnovación',
+            exportOptions: {
+              columns: ':visible'
+            }
           }
         ],
-        // Permitir al usuario elegir cuántos registros ver por página
+        // Opciones para el tamaño de página. Se incluyen todas las opciones requeridas.
         lengthMenu: [[10, 25, 50, 100, 200], [10, 25, 50, 100, 200]],
         pageLength: 10,
         language: {
@@ -362,6 +407,110 @@
       // antes de cargar los datos. Esto asegura que el filtro se active aunque el evento
       // 'change' no se dispare nuevamente tras renderizar la tabla.
       applyFilters();
+
+      // ========== Gestión de diseños guardados ==========
+      // Controles y manejo para guardar, cargar y eliminar configuraciones de la tabla.
+      const designNameInput = document.getElementById('designName');
+      const loadDesignSelect = document.getElementById('loadDesign');
+      const saveDesignBtn = document.getElementById('saveDesign');
+      const deleteDesignBtn = document.getElementById('deleteDesign');
+
+      // Cargar las opciones existentes desde localStorage y refrescar el selector
+      function updateDesignOptions() {
+        const designs = JSON.parse(localStorage.getItem('dataInnovacionDesigns') || '{}');
+        loadDesignSelect.innerHTML = '';
+        const defaultOpt = document.createElement('option');
+        defaultOpt.value = '';
+        defaultOpt.textContent = '--Seleccionar diseño--';
+        loadDesignSelect.appendChild(defaultOpt);
+        Object.keys(designs).forEach(name => {
+          const opt = document.createElement('option');
+          opt.value = name;
+          opt.textContent = name;
+          loadDesignSelect.appendChild(opt);
+        });
+      }
+
+      // Guardar un nuevo diseño o sobreescribir uno existente
+      saveDesignBtn.addEventListener('click', () => {
+        const name = (designNameInput.value || '').trim();
+        if (!name) {
+          alert('Ingrese un nombre para el diseño antes de guardarlo.');
+          return;
+        }
+        const designs = JSON.parse(localStorage.getItem('dataInnovacionDesigns') || '{}');
+        // Obtener estado actual de columnas: orden, visibilidad y anchos
+        const order = dataTable.colReorder.order();
+        const visible = dataTable.columns().visible().toArray();
+        // Obtener anchos actuales de las columnas como números (sin px)
+        const widths = $(dataTable.table().header()).find('th').map(function() {
+          return $(this).outerWidth();
+        }).get();
+        const pageLength = dataTable.page.len();
+        designs[name] = { order, visible, widths, pageLength };
+        localStorage.setItem('dataInnovacionDesigns', JSON.stringify(designs));
+        updateDesignOptions();
+        alert('Diseño "' + name + '" guardado correctamente.');
+      });
+
+      // Cargar el diseño seleccionado
+      loadDesignSelect.addEventListener('change', () => {
+        const selected = loadDesignSelect.value;
+        if (!selected) {
+          return;
+        }
+        const designs = JSON.parse(localStorage.getItem('dataInnovacionDesigns') || '{}');
+        const design = designs[selected];
+        if (!design) {
+          alert('El diseño seleccionado no existe.');
+          return;
+        }
+        // Aplicar orden de columnas
+        if (design.order && Array.isArray(design.order)) {
+          dataTable.colReorder.order(design.order, true);
+        }
+        // Aplicar visibilidad de columnas
+        if (design.visible && Array.isArray(design.visible)) {
+          design.visible.forEach((vis, idx) => {
+            dataTable.column(idx).visible(vis, false);
+          });
+        }
+        // Aplicar anchos de columnas usando el plugin colResize
+        if (design.widths && Array.isArray(design.widths)) {
+          if (dataTable.colResize && typeof dataTable.colResize.restore === 'function') {
+            dataTable.colResize.restore(design.widths);
+          }
+        }
+        // Aplicar tamaño de página y redibujar
+        if (design.pageLength) {
+          dataTable.page.len(design.pageLength);
+        }
+        dataTable.draw(false);
+      });
+
+      // Eliminar el diseño seleccionado
+      deleteDesignBtn.addEventListener('click', () => {
+        const selected = loadDesignSelect.value;
+        if (!selected) {
+          alert('Seleccione un diseño para eliminar.');
+          return;
+        }
+        const designs = JSON.parse(localStorage.getItem('dataInnovacionDesigns') || '{}');
+        if (!designs[selected]) {
+          alert('El diseño seleccionado no existe.');
+          return;
+        }
+        if (!confirm('¿Está seguro de eliminar el diseño "' + selected + '"?')) {
+          return;
+        }
+        delete designs[selected];
+        localStorage.setItem('dataInnovacionDesigns', JSON.stringify(designs));
+        updateDesignOptions();
+        alert('Diseño eliminado.');
+      });
+
+      // Inicializar opciones al renderizar la tabla
+      updateDesignOptions();
     }
   </script>
 </body>
