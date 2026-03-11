@@ -398,20 +398,23 @@
           url: '//cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json'
         }
       ,
-        // Una vez inicializada la tabla, crear un selector de filtros en el encabezado
-        // para cada columna. Esto permite filtrar directamente desde el encabezado
-        // mostrando las opciones disponibles en el conjunto de datos.
+        // Una vez inicializada la tabla, crear un selector de filtros dentro de cada
+        // encabezado de columna.  Así, al reordenar columnas, el filtro viaja junto
+        // con su columna y siempre se mantiene alineado.
         initComplete: function() {
           const api = this.api();
-          // Añadir una fila adicional al thead para los filtros
-          const $thead = $('#resultTable thead');
-          const $filterRow = $('<tr class="filter-row"></tr>').appendTo($thead);
           api.columns().every(function() {
             const column = this;
-            const $cell = $('<th></th>').appendTo($filterRow);
-            // Crear el select y añadir opción por defecto
-            const $select = $('<select><option value="">Todos</option></select>')
-              .appendTo($cell)
+            const header = $(column.header());
+            // Eliminar cualquier selector anterior para evitar duplicados
+            header.find('select.column-filter').remove();
+            // Crear un select con una clase identificadora y opción por defecto
+            const select = $('<br><select class="column-filter"><option value="">Todos</option></select>')
+              .appendTo(header)
+              .on('click', function(e) {
+                // Evitar que el click en el select ordene la columna
+                e.stopPropagation();
+              })
               .on('change', function() {
                 const val = $.fn.dataTable.util.escapeRegex($(this).val());
                 column.search(val ? '^' + val + '$' : '', true, false).draw();
@@ -420,7 +423,7 @@
             const uniqueVals = column.data().unique().sort().toArray();
             uniqueVals.forEach(function(d) {
               if (d !== null && d !== undefined && d !== '') {
-                $select.append('<option value="' + d + '">' + d + '</option>');
+                select.append('<option value="' + d + '">' + d + '</option>');
               }
             });
           });
