@@ -558,9 +558,10 @@
         // Limpiar actuales
         colToMoveSelect.innerHTML = '';
         newPositionSelect.innerHTML = '';
-        const headers = dataTable.columns().header().toArray();
-        headers.forEach((th, index) => {
-          const title = $(th).text() || 'Col ' + index;
+        // Utilizar los títulos de las columnas definidos en la configuración de DataTables
+        // para que se muestren los nombres reales en lugar de "Col 0", "Col 1", etc.
+        columns.forEach((colObj, index) => {
+          const title = colObj.title || colObj.data || ('Col ' + index);
           // Agregar a colToMoveSelect
           const optMove = document.createElement('option');
           optMove.value = index;
@@ -569,7 +570,8 @@
           // Agregar a newPositionSelect
           const optPos = document.createElement('option');
           optPos.value = index;
-          optPos.textContent = index + 1; // Mostrar posición 1-indexada
+          // Mostrar posición de forma 1-indexada para mayor claridad
+          optPos.textContent = (index + 1).toString();
           newPositionSelect.appendChild(optPos);
         });
       }
