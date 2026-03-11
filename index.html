@@ -47,6 +47,16 @@
       white-space: nowrap;
     }
 
+    /* Evitar que las celdas del cuerpo se dividan y forzar el scroll horizontal */
+    table.dataTable tbody td {
+      white-space: nowrap;
+    }
+
+    /* Asegurar que el contenedor de scroll horizontal muestre la barra */
+    .dataTables_wrapper .dataTables_scrollBody {
+      overflow-x: auto !important;
+    }
+
     /* Estilo de controles DataTables: coloca los botones y el menú de longitud a la izquierda
        y el cuadro de búsqueda a la derecha. Esto mantiene juntos los controles de
        columna/longitud y separa el buscador. */
@@ -130,18 +140,10 @@
       <label for="anio_hasta">Año adjudicación hasta</label>
       <input type="number" id="anio_hasta" name="anio_hasta" min="2010" max="2100" placeholder="Ej. 2021">
     </div>
-    <div>
-      <label for="region_ejecucion">Región de ejecución</label>
-      <select id="region_ejecucion" name="region_ejecucion">
-        <option value="">--Cualquiera--</option>
-      </select>
-    </div>
-    <div>
-      <label for="sector_economico">Sector económico</label>
-      <select id="sector_economico" name="sector_economico">
-        <option value="">--Cualquiera--</option>
-      </select>
-    </div>
+      <!-- Eliminamos los filtros de región de ejecución y sector económico del panel superior.
+           Las columnas correspondientes seguirán mostrándose en la tabla y podrán ser
+           filtradas desde los selectores en el encabezado de cada columna una vez cargados
+           los datos. -->
     <div style="align-self: flex-end;">
       <button type="submit">Cargar datos</button>
     </div>
@@ -210,10 +212,11 @@
       });
     }
 
-    // Al cargar la página, precargar los selectores de región y sector con las listas estáticas.
+    // Al cargar la página no es necesario precargar los selectores de región y sector
+    // porque esos filtros se han eliminado.  La tabla incluirá selectores por columna
+    // para filtrar valores una vez se muestren los datos.
     document.addEventListener('DOMContentLoaded', () => {
-      fillSelectWithValues(document.getElementById('region_ejecucion'), REGION_LIST);
-      fillSelectWithValues(document.getElementById('sector_economico'), SECTOR_LIST);
+      // ninguna acción necesaria aquí
     });
 
     let dataTable;
@@ -237,8 +240,6 @@
       const anioHasta = document.getElementById('anio_hasta').value;
       // Establecer un límite por defecto alto para obtener la mayoría de los registros.
       const DEFAULT_LIMIT = 10000;
-      const regionFilter = document.getElementById('region_ejecucion').value;
-      const sectorFilter = document.getElementById('sector_economico').value;
       if (codigo) params.append('filter[codigo]', codigo);
       if (rut) params.append('filter[rut_beneficiario]', rut);
       if (tipo) params.append('filter[tipo_intervencion]', tipo);
@@ -348,7 +349,9 @@
         scrollX: true,
         colReorder: true,
         // Activar la opción de redimensionar columnas mediante el plugin colResize
-        colResize: true,
+        // Configuración del plugin de redimensionamiento de columnas.  Se pasa un
+        // objeto con la opción `isEnabled` para activar el plugin.
+        colResize: { isEnabled: true },
         // Organizar los controles: Botones (B), menú de longitud (l), filtro de búsqueda (f),
         // resto de componentes (r, t, i, p). Esto sitúa el menú de longitud junto al botón de columnas.
         dom: 'Blfrtip',
@@ -373,40 +376,49 @@
         language: {
           url: '//cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json'
         }
+      ,
+        // Una vez inicializada la tabla, crear un selector de filtros en el encabezado
+        // para cada columna. Esto permite filtrar directamente desde el encabezado
+        // mostrando las opciones disponibles en el conjunto de datos.
+        initComplete: function() {
+          const api = this.api();
+          // Añadir una fila adicional al thead para los filtros
+          const $thead = $('#resultTable thead');
+          const $filterRow = $('<tr class="filter-row"></tr>').appendTo($thead);
+          api.columns().every(function() {
+            const column = this;
+            const $cell = $('<th></th>').appendTo($filterRow);
+            // Crear el select y añadir opción por defecto
+            const $select = $('<select><option value="">Todos</option></select>')
+              .appendTo($cell)
+              .on('change', function() {
+                const val = $.fn.dataTable.util.escapeRegex($(this).val());
+                column.search(val ? '^' + val + '$' : '', true, false).draw();
+              });
+            // Obtener valores únicos no vacíos de la columna y añadir al select
+            const uniqueVals = column.data().unique().sort().toArray();
+            uniqueVals.forEach(function(d) {
+              if (d !== null && d !== undefined && d !== '') {
+                $select.append('<option value="' + d + '">' + d + '</option>');
+              }
+            });
+          });
+        }
       });
 
-      // Referenciar los selectores de región y sector sin recargarlos.  Estos selectores se
-      // precargan con listas estáticas al cargar la página para que el usuario pueda filtrar
-      // incluso antes de obtener datos.  No los volvemos a rellenar con valores del dataset,
-      // evitando que dependan de la información descargada ni que se pierdan selecciones.
-      const regionSelect = document.getElementById('region_ejecucion');
-      const sectorSelect = document.getElementById('sector_economico');
-      // Determinar los índices de las columnas de región y sector en la tabla
-      const regionColumnIndex = columns.findIndex(col => col.data === 'region_ejecucion' || col.data === 'region');
-      const sectorColumnIndex = columns.findIndex(col => col.data === 'sector_economico' || col.data === 'sector');
-      // Función para aplicar filtros basados en la selección del usuario.  Usa expresiones
-      // regulares que se ajustan exactamente al valor seleccionado.
-      function applyFilters() {
-        const regionValue = regionSelect.value;
-        const sectorValue = sectorSelect.value;
-        if (regionColumnIndex >= 0) {
-          dataTable.column(regionColumnIndex).search(regionValue ? '^' + regionValue + '$' : '', true, false);
+      // Inicializar redimensionamiento de columnas si el plugin está disponible
+      if ($.fn.dataTable && $.fn.dataTable.ColResize && dataTable) {
+        try {
+          // Crear una nueva instancia para permitir el arrastre
+          new $.fn.dataTable.ColResize(dataTable);
+        } catch (err) {
+          console.error('No se pudo inicializar ColResize:', err);
         }
-        if (sectorColumnIndex >= 0) {
-          dataTable.column(sectorColumnIndex).search(sectorValue ? '^' + sectorValue + '$' : '', true, false);
-        }
-        dataTable.draw();
       }
-      // Eliminar manejadores previos (en caso de recargar la tabla) y añadir los actuales
-      regionSelect.removeEventListener('change', applyFilters);
-      sectorSelect.removeEventListener('change', applyFilters);
-      regionSelect.addEventListener('change', applyFilters);
-      sectorSelect.addEventListener('change', applyFilters);
 
-      // Aplicar los filtros inicialmente si el usuario había seleccionado región o sector
-      // antes de cargar los datos. Esto asegura que el filtro se active aunque el evento
-      // 'change' no se dispare nuevamente tras renderizar la tabla.
-      applyFilters();
+      // Los filtros de región y sector se eliminan del panel superior.  Los valores de las
+      // columnas pueden ser filtrados desde los selectores generados en el encabezado de la
+      // tabla (creados en initComplete).
 
       // ========== Gestión de diseños guardados ==========
       // Controles y manejo para guardar, cargar y eliminar configuraciones de la tabla.
